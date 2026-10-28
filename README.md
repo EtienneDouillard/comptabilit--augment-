@@ -1,8 +1,24 @@
-# Comptabilité augmentée
+# Smart Accounting Clone
 
-Projet du hackathon Pennylane (28 et 29 octobre 2026) : connecter Claude à Pennylane via le MCP pour mieux lire, ventiler et libeller les factures, puis aider le client à régulariser ses pièces manquantes.
+tu peux clonnes ça ? https://github.com/EtienneDouillard/comptabilit--augment-
 
-## Documents de cadrage
+This project was built with [Lovable](https://lovable.dev).
 
-- [Problèmes, idées et schéma du flux](cadrage/01-problemes-et-idees.md) : synthèse de l'enregistrement d'équipe du 28/10.
-- [Cahier des charges](cadrage/02-cahier-des-charges.md) : objectifs, phases, architecture, priorités et points techniques à vérifier.
+## Build with Lovable
+
+Continue developing this project in the [Lovable editor](https://lovable.dev/projects/e7a3c9e7-9e0d-4d76-8242-5776cdcae247).
+
+- **Ship faster**: describe what you want to build and Lovable handles the code.
+- **Stay in sync**: every change made in Lovable is committed straight to this repository.
+- **Full ownership**: this code is yours. Push to `main` on GitHub and your changes sync back into Lovable, ready for your next prompt.
+
+## Development
+
+Prefer working locally? You need Node.js and npm — [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating).
+
+```sh
+git clone <this-repository-url>
+cd <repository-name>
+npm i
+npm run dev
+```
