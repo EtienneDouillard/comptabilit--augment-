@@ -61,19 +61,46 @@ export type Database = {
           },
         ]
       }
+      ai_key: {
+        Row: {
+          id: number
+          secret_blob: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: number
+          secret_blob: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: number
+          secret_blob?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       ai_settings: {
         Row: {
           id: number
+          model_cabinet: string
+          model_client: string
           monthly_cap_usd: number
           updated_at: string
         }
         Insert: {
           id?: number
+          model_cabinet?: string
+          model_client?: string
           monthly_cap_usd?: number
           updated_at?: string
         }
         Update: {
           id?: number
+          model_cabinet?: string
+          model_client?: string
           monthly_cap_usd?: number
           updated_at?: string
         }
@@ -455,8 +482,12 @@ export type Database = {
           evidence_url: string | null
           frequency: string
           id: string
+          last_check: Json | null
+          last_check_at: string | null
           method: string
           receipt_email: string | null
+          research: Json | null
+          researched_at: string | null
           source_url: string
           state: string
           supplier: string
@@ -470,8 +501,12 @@ export type Database = {
           evidence_url?: string | null
           frequency?: string
           id?: string
+          last_check?: Json | null
+          last_check_at?: string | null
           method?: string
           receipt_email?: string | null
+          research?: Json | null
+          researched_at?: string | null
           source_url: string
           state?: string
           supplier: string
@@ -485,8 +520,12 @@ export type Database = {
           evidence_url?: string | null
           frequency?: string
           id?: string
+          last_check?: Json | null
+          last_check_at?: string | null
           method?: string
           receipt_email?: string | null
+          research?: Json | null
+          researched_at?: string | null
           source_url?: string
           state?: string
           supplier?: string

@@ -2,8 +2,9 @@
 - [x] Créer et tester un compte cabinet démo distinct du compte dirigeant
 - [x] Sources : sauvegarder URL, méthode, chemin et adresse Pennylane par fournisseur ; vérifier après rechargement
 - [x] Renseigner l'adresse de collecte fournisseur Pennylane fournie sur le dossier démo
-- [ ] Recherche Internet dynamique depuis une URL — service de recherche à connecter ; seules les pistes documentées sont actuellement affichées
-- [ ] Contrôle préalable par Claude Sonnet 5.5 — modèle absent du catalogue vérifié ; réception des pièces par CA+ à connecter
+- [x] Recherche Internet réelle par Claude (préconisation sauvegardée par fournisseur)
+- [x] Contrôle de collecte : actualisation Pennylane + vérification Claude de chaque pièce déposée, état actif/attention
+- [ ] Contrôle mensuel automatique (planification) — à brancher ensuite
 - [ ] Collecte mensuelle et envoi des pièces contrôlées — fournisseur réel et méthode de téléchargement à connecter ; aucune collecte active
 - [ ] Compagnon Chrome — installation utilisateur nécessaire, sans export des cookies ni mots de passe fournisseur
 - [x] Corriger la configuration Claude et vérifier une conversation réelle
@@ -27,3 +28,5 @@
 - [x] Publier l'app après la fusion
 - [x] Favicon « CA+ » (augmenté)
 - [x] Comptes démo client + dirigeant sur le dossier Démo Hackathon 7, avec données Pennylane
+
+- [x] Paramètres : changer la clé API Claude et le modèle (cabinet et dirigeant séparés), défaut Sonnet 5.5
