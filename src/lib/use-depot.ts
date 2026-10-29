@@ -5,7 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { bilanDepot, resteAFaire, type Bilan } from "@/lib/controle-depot";
 import { controlerDepot, etatDepots, type PieceDeposee } from "@/lib/saisie.functions";
 import { PHOTO_SANS_FACTURE_COMMENT } from "@/lib/no-invoice";
-import { formatDate, formatEUR, type Tx } from "@/lib/session";
+import { formatDate, formatEUR, meQuery, type Tx } from "@/lib/session";
 
 export const ACCEPT = "application/pdf,image/jpeg,image/png";
 
@@ -14,6 +14,12 @@ export const ACCEPT = "application/pdf,image/jpeg,image/png";
 export function useDepot(dossierId: string | null | undefined) {
   const qc = useQueryClient();
   const [busy, setBusy] = useState(false);
+  // A cabinet user previewing the client space never acts on the client's behalf.
+  const preview = !!useQuery(meQuery).data?.preview;
+  const blocked = () => {
+    if (preview) toast.info("Aperçu cabinet : les actions du client sont désactivées.");
+    return preview;
+  };
   const [checking, setChecking] = useState(false);
   const depots = useQuery({
     queryKey: ["client-depots", dossierId],
@@ -64,6 +70,7 @@ export function useDepot(dossierId: string | null | undefined) {
   // Files go to the targets in order (the last target takes the extra files).
   // photoSansFacture: a photo standing in for a missing invoice (no VAT): not read by Claude, noted for the firm.
   async function upload(files: File[], targets: Tx[], opts: { photoSansFacture?: boolean } = {}) {
+    if (blocked()) return;
     if (files.length === 0 || !dossierId) return;
     if (targets.length === 0) {
       toast.error("Sélectionnez au moins une ligne.");
@@ -141,6 +148,7 @@ export function useDepot(dossierId: string | null | undefined) {
   }
 
   async function mark(targets: Tx[], status: "email" | "sans_facture", comment?: string) {
+    if (blocked()) return false;
     const ids = targets.map((t) => t.id);
     if (!ids.length) {
       toast.error("Sélectionnez au moins une ligne.");
@@ -159,7 +167,7 @@ export function useDepot(dossierId: string | null | undefined) {
     return true;
   }
 
-  return { busy, checking, bilanOf, upload, mark };
+  return { busy, checking, preview, bilanOf, upload, mark };
 }
 
 // For the e-mail choice: the client's own mail app opens on the dossier address; the PDF is attached by hand

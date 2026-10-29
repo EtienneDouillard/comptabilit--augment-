@@ -5,6 +5,8 @@ import { eclater, type Classement, type LignePiece } from "@/lib/eclatement";
 import { COMPTES_ACHAT, compteAchatValide, libellePcg, SOURCE_PCG } from "@/lib/pcg";
 import { round2, type Facture, type Ligne } from "@/lib/ventilation";
 import { typeDocumentOf, type TypeDocument } from "@/lib/type-document";
+import { EMAIL } from "@/lib/email";
+export { EMAIL } from "@/lib/email";
 
 export { TYPE_NON_VALABLE, typeDocumentOf, type TypeDocument } from "@/lib/type-document";
 
@@ -38,7 +40,7 @@ export const SYSTEM_LECTURE = `Tu lis une facture d'achat française pour un cab
 
 - lisible : false si le document est illisible ou n'est pas une pièce d'achat (facture, avoir, facture proforma, devis, bon de commande). Dans ce cas, laisse les lignes vides et les montants à 0.
 - type_document : ce que le document dit être, d'après son titre et ses mentions. « facture » pour une facture définitive ; « avoir » ; « proforma » si le document s'intitule facture proforma (ou pro forma) ; « devis » pour un devis, une offre de prix ou une estimation ; « bon_de_commande » pour un bon ou une confirmation de commande ; « autre » sinon. Un proforma, un devis ou un bon de commande reste lisible : recopie-le comme une facture.
-- fournisseur : le nom de l'émetteur de la facture. numero : le numéro de facture. date : la date de facture au format AAAA-MM-JJ (chaîne vide si absente).
+- fournisseur : le nom de l'émetteur de la facture. email_fournisseur : l'adresse e-mail de l'émetteur si elle est imprimée sur la pièce (contact, facturation), sinon chaîne vide ; jamais celle du client. numero : le numéro de facture. date : la date de facture au format AAAA-MM-JJ (chaîne vide si absente).
 - lignes : chaque ligne de désignation telle qu'imprimée, sur toutes les pages, sans regrouper. Ne recopie pas les lignes de sous-total, de TVA ou de total.
 - montant_ht : le montant HT de la ligne. prix_unitaire_ht et quantite : tels qu'imprimés (quantite 1 et prix = montant si absents).
 - taux_tva : 0.2 pour 20 %, 0.1 pour 10 %, 0.055 pour 5,5 %, 0 si la ligne n'a pas de TVA.
@@ -60,6 +62,7 @@ export const OUTPUT_SCHEMA_LECTURE = {
     lisible: { type: "boolean" },
     type_document: { type: "string", enum: ["facture", "avoir", "proforma", "devis", "bon_de_commande", "autre"] },
     fournisseur: { type: "string" },
+    email_fournisseur: { type: "string" },
     numero: { type: "string" },
     date: { type: "string" },
     libelle_ecriture: { type: "string" },
@@ -87,7 +90,7 @@ export const OUTPUT_SCHEMA_LECTURE = {
       },
     },
   },
-  required: ["lisible", "type_document", "fournisseur", "numero", "date", "libelle_ecriture", "total_ht", "total_tva", "total_ttc", "lignes"],
+  required: ["lisible", "type_document", "fournisseur", "email_fournisseur", "numero", "date", "libelle_ecriture", "total_ht", "total_tva", "total_ttc", "lignes"],
   additionalProperties: false,
 } as const;
 
@@ -96,6 +99,7 @@ const montant = z.number().finite();
 const Reponse = z.object({
   lisible: z.boolean(),
   type_document: z.string().default("facture"),
+  email_fournisseur: z.string().default(""),
   fournisseur: z.string(),
   numero: z.string(),
   date: z.string(),
@@ -122,6 +126,8 @@ export type LigneLue = LignePiece & { compte: string; motif: string };
 
 export type Lecture = {
   typeDocument: TypeDocument;
+  /** E-mail of the issuer printed on the document ("" if none): offered later to ask the supplier for invoices. */
+  emailFournisseur: string;
   fournisseur: string; numero: string; date: string | null; libelleEcriture: string;
   totalHt: number; totalTva: number; totalTtc: number; lignes: LigneLue[];
 };
@@ -155,6 +161,7 @@ export function parseLecture(raw: string): Lecture | null {
   if (!r.lisible || lignes.length === 0) return null;
   return {
     typeDocument: typeDocumentOf(r.type_document),
+    emailFournisseur: EMAIL.test(r.email_fournisseur.trim()) ? r.email_fournisseur.trim().toLowerCase().slice(0, 254) : "",
     fournisseur: r.fournisseur.trim().slice(0, 120),
     numero: r.numero.trim().slice(0, 60),
     date: ISO_DATE.test(r.date) ? r.date : null,

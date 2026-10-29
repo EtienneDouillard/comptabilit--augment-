@@ -1,10 +1,10 @@
 import { requireClient } from "@/lib/session";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { HelpChat } from "@/components/HelpChat";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import {
-  ArrowDownWideNarrow, ArrowRight, Building2, CalendarCheck, CheckCircle2, ChevronDown, ChevronRight, Clock, ReceiptText, Search, ShoppingBag,
+  ArrowDownWideNarrow, ArrowRight, Building2, CalendarCheck, LayoutGrid, List, CheckCircle2, ChevronDown, ChevronRight, Clock, ReceiptText, Search, ShoppingBag,
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { AppHeader, CabinetContact } from "@/components/AppHeader";
@@ -19,7 +19,7 @@ import { GroupStatePill } from "@/components/StatusPill";
 import { Button } from "@/components/ui/button";
 import { useCabinet } from "@/lib/cabinet";
 import { matchesSearch, prioritize, txHaystack } from "@/lib/priority";
-import { meQuery, groupBySupplier, formatDate, formatEUR, type SupplierGroup, type Tx } from "@/lib/session";
+import { chooseDossier, meQuery, groupBySupplier, formatDate, formatEUR, type SupplierGroup, type Tx } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/_authenticated/espace/")({
@@ -78,6 +78,17 @@ function counterparts(groups: SupplierGroup[]) {
 }
 
 const todoCount = (g: SupplierGroup) => g.txs.filter((t) => t.status === "a_faire").length;
+// Amount still to justify for a supplier (Simon: sort by it, largest first).
+const toJustify = (g: SupplierGroup) => g.txs.filter((t) => t.status === "a_faire").reduce((s, t) => s + Math.abs(Number(t.amount)), 0);
+
+// Payment dates (Stéphane): those still to justify, or all of them once the supplier is done.
+function paymentDates(g: SupplierGroup) {
+  const days = (g.txs.some((t) => t.status === "a_faire") ? g.txs.filter((t) => t.status === "a_faire") : g.txs).map((t) => t.date).sort();
+  const verb = g.direction === "in" ? "Encaissé" : "Payé";
+  return !days.length ? "" : days[0] === days.at(-1)
+    ? `${verb} le ${formatDate(days[0]!)}`
+    : `${verb}s du ${formatDate(days[0]!)} au ${formatDate(days.at(-1)!)}`;
+}
 
 function Espace() {
   const cabinet = useCabinet();
@@ -86,10 +97,17 @@ function Espace() {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"all" | "todo" | "done">("all");
   const [dir, setDir] = useState<"all" | "out" | "in">("all");
-  const [order, setOrder] = useState<"priority" | "name">("priority");
+  const [order, setOrder] = useState<"priority" | "amount" | "name">("priority");
+  const [view, setView] = useState<"cards" | "list">("cards");
   // Several suppliers answered at once (Simon): their payments still to do.
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const siteOf = useSupplierSites(dossierId);
+  const qc = useQueryClient();
+  async function switchDossier(id: string) {
+    chooseDossier(id);
+    setPicked(new Set());
+    await qc.invalidateQueries({ queryKey: meQuery.queryKey });
+  }
 
   const all = txs.data ?? [];
   const steps = prioritize(groupBySupplier(all));
@@ -99,13 +117,25 @@ function Espace() {
   const years = [...new Set(all.filter((t) => t.status === "a_faire").map((t) => t.date.slice(0, 4)))].sort();
   const bothDirections = steps.some((g) => g.direction === "in") && steps.some((g) => g.direction === "out");
 
-  const ordered = order === "priority" ? steps : [...steps].sort((a, b) => a.name.localeCompare(b.name, "fr"));
+  const ordered =
+    order === "priority" ? steps
+    : order === "amount" ? [...steps].sort((a, b) => toJustify(b) - toJustify(a))
+    : [...steps].sort((a, b) => a.name.localeCompare(b.name, "fr"));
   const visible = ordered.filter(
     (g) =>
       (status === "all" || (status === "done") === (g.state === "done")) &&
       (dir === "all" || g.direction === dir) &&
       g.txs.some((t) => matchesSearch(txHaystack(t), query)),
   );
+  // Bulk actions (Simon): every supplier still to do among those shown can be ticked at once.
+  const pickable = visible.filter((g) => g.state !== "done");
+  const allPicked = pickable.length > 0 && pickable.every((g) => picked.has(g.key));
+  const pick = (key: string, on: boolean) =>
+    setPicked((p) => {
+      const n = new Set(p);
+      if (on) n.add(key); else n.delete(key);
+      return n;
+    });
   const filtered = query.trim() !== "" || status !== "all" || dir !== "all";
 
   return (
@@ -125,7 +155,15 @@ function Espace() {
                 <Building2 aria-hidden className="h-5 w-5 shrink-0 text-primary" />
                 <span className="min-w-0">
                   <span className="block text-xs font-semibold uppercase tracking-wider text-muted-foreground">Dossier</span>
-                  <strong className="block text-lg leading-snug text-primary sm:text-xl">{dossier.data.name}</strong>
+                  {(me.data?.dossiers.length ?? 0) > 1 && !me.data?.preview ? (
+                    // Several companies (Simon 6): the client switches dossier here.
+                    <select aria-label="Changer de dossier" value={dossierId ?? ""} onChange={(e) => switchDossier(e.target.value)}
+                      className="block max-w-full truncate bg-transparent text-lg font-bold leading-snug text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:text-xl">
+                      {me.data!.dossiers.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  ) : (
+                    <strong className="block text-lg leading-snug text-primary sm:text-xl">{dossier.data.name}</strong>
+                  )}
                 </span>
               </p>
             )}
@@ -203,16 +241,23 @@ function Espace() {
                     <ArrowDownWideNarrow aria-hidden className="pointer-events-none absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-primary" />
                     <select
                       value={order}
-                      onChange={(e) => setOrder(e.target.value as "priority" | "name")}
+                      onChange={(e) => setOrder(e.target.value as "priority" | "amount" | "name")}
                       className="h-12 w-full appearance-none rounded-xl border border-input bg-card pl-11 pr-10 font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
                       <option value="priority">Par priorité</option>
+                      <option value="amount">Par montant à justifier (décroissant)</option>
                       <option value="name">Par ordre alphabétique</option>
                     </select>
                     <ChevronDown aria-hidden className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-primary" />
                   </label>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  {pickable.length > 0 && (
+                    <label className="mr-1 flex cursor-pointer items-center gap-2 rounded-full border bg-card px-3 py-1.5 text-sm font-semibold text-primary">
+                      <Checkbox checked={allPicked} onCheckedChange={(v) => setPicked(new Set(v === true ? pickable.map((g) => g.key) : []))} />
+                      Tout cocher
+                    </label>
+                  )}
                   <FilterChip active={status === "todo"} onClick={() => setStatus((s) => (s === "todo" ? "all" : "todo"))} icon={Clock}>
                     À faire
                   </FilterChip>
@@ -230,6 +275,14 @@ function Espace() {
                       </FilterChip>
                     </>
                   )}
+                  <span className="ml-auto inline-flex rounded-full border bg-card p-0.5" role="group" aria-label="Affichage">
+                    {(["cards", "list"] as const).map((v) => (
+                      <button key={v} type="button" aria-pressed={view === v} onClick={() => setView(v)}
+                        className={cn("inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-semibold", view === v ? "bg-primary text-primary-foreground" : "text-primary")}>
+                        {v === "cards" ? <LayoutGrid className="h-4 w-4" /> : <List className="h-4 w-4" />} {v === "cards" ? "Cartes" : "Liste"}
+                      </button>
+                    ))}
+                  </span>
                 </div>
               </div>
             )}
@@ -261,19 +314,26 @@ function Espace() {
                       {todo} à transmettre · {list.length} {d === "out" ? "fournisseur" : "client"}{list.length > 1 ? "s" : ""}
                     </span>
                   </div>
-                  <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                    {list.map((g) => (
-                      <SupplierCard key={g.key} g={g} site={siteOf(g.name)} picked={picked.has(g.key)}
-                        onPick={(on) => setPicked((p) => { const n = new Set(p); if (on) n.add(g.key); else n.delete(g.key); return n; })} />
-                    ))}
-                  </div>
+                  {view === "cards" ? (
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                      {list.map((g) => (
+                        <SupplierCard key={g.key} g={g} site={siteOf(g.name)} picked={picked.has(g.key)} onPick={(on) => pick(g.key, on)} />
+                      ))}
+                    </div>
+                  ) : (
+                    <ul className="mt-4 divide-y overflow-hidden rounded-2xl border bg-card shadow-sm">
+                      {list.map((g) => (
+                        <SupplierRow key={g.key} g={g} site={siteOf(g.name)} picked={picked.has(g.key)} onPick={(on) => pick(g.key, on)} />
+                      ))}
+                    </ul>
+                  )}
                 </section>
               );
             })}
           </>
         )}
 
-        {dossierId && (
+        {dossierId && !me.data?.preview && (
           <MultiActions dossierId={dossierId} groups={steps.filter((g) => picked.has(g.key) && g.state !== "done")}
             onClear={() => setPicked(new Set())} />
         )}
@@ -291,12 +351,7 @@ function Espace() {
 function SupplierCard({ g, site, picked, onPick }: { g: SupplierGroup; site: string | null; picked: boolean; onPick: (on: boolean) => void }) {
   const done = g.txs.length - todoCount(g);
   const noun = g.direction === "in" ? "encaissement" : "paiement";
-  // Payment dates (Stéphane): those still to justify, or all of them once the supplier is done.
-  const days = (g.txs.some((t) => t.status === "a_faire") ? g.txs.filter((t) => t.status === "a_faire") : g.txs).map((t) => t.date).sort();
-  const verb = g.direction === "in" ? "Encaissé" : "Payé";
-  const dates = !days.length ? "" : days[0] === days.at(-1)
-    ? `${verb} le ${formatDate(days[0]!)}`
-    : `${verb}s du ${formatDate(days[0]!)} au ${formatDate(days.at(-1)!)}`;
+  const dates = paymentDates(g);
   return (
     <div className="relative">
     {g.state !== "done" && (
@@ -333,5 +388,32 @@ function SupplierCard({ g, site, picked, onPick }: { g: SupplierGroup; site: str
       <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
     </Link>
     </div>
+  );
+}
+
+// List view (Simon): one compact row per supplier, ticked for a bulk action.
+function SupplierRow({ g, site, picked, onPick }: { g: SupplierGroup; site: string | null; picked: boolean; onPick: (on: boolean) => void }) {
+  const left = toJustify(g);
+  return (
+    <li className={cn("flex items-center gap-3 px-4 py-3", picked && "bg-mint-pale/70")}>
+      {g.state !== "done" ? (
+        <Checkbox className="h-5 w-5" checked={picked} onCheckedChange={(v) => onPick(v === true)} aria-label={`Sélectionner ${g.name} pour une action groupée`} />
+      ) : (
+        <span aria-hidden className="h-5 w-5" />
+      )}
+      <Link to="/espace/$supplier" params={{ supplier: g.key }} className="group flex min-w-0 flex-1 items-center gap-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
+        <SupplierAvatar name={g.name} site={site} className="h-9 w-9 text-sm" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-bold text-primary">{g.name}</span>
+          <span className="block truncate text-sm text-muted-foreground">{paymentDates(g)}</span>
+        </span>
+        <span className="text-right text-sm">
+          <span className="block font-bold tabular-nums">{formatEUR(left || g.total)}</span>
+          <span className="block text-xs text-muted-foreground">{left ? "à justifier" : "total"}</span>
+        </span>
+        <GroupStatePill state={g.state} className="hidden sm:inline-flex" />
+        <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
+      </Link>
+    </li>
   );
 }

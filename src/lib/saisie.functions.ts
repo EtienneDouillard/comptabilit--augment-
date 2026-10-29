@@ -4,7 +4,7 @@ import { requireSupabaseAuth } from "@/integrations/supabase/auth-middleware";
 import { ANALYSIS_MODEL, DEFAULT_MONTHLY_CAP_USD, costUsd, monthStart } from "@/lib/analysis";
 import {
   LigneSaisie, MAX_FICHIER_OCTETS, OUTPUT_SCHEMA_LECTURE, RESERVE_LECTURE_USD, SYSTEM_LECTURE,
-  parseLecture, proposer, reglesAEnregistrer, typeMedia, TYPE_NON_VALABLE, typeDocumentOf, type RegleFournisseur, type SaisieState, type TypeDocument,
+  EMAIL, parseLecture, proposer, reglesAEnregistrer, typeMedia, TYPE_NON_VALABLE, typeDocumentOf, type RegleFournisseur, type SaisieState, type TypeDocument,
 } from "@/lib/saisie";
 import { controle, type Facture, type Ligne } from "@/lib/ventilation";
 import { isDemoCompany } from "@/lib/demo-dossiers";
@@ -394,4 +394,19 @@ export const etatDepots = createServerFn({ method: "POST" })
       return { transactionId: u.transaction_id, lue: !!r, fournisseur: r?.fournisseur ?? "", totalTtc: Number(r?.total_ttc ?? 0), typeDocument: typeDocumentOf(r?.type_document) };
     });
     return { pieces };
+  });
+
+// E-mails of a supplier read on its other invoices of the dossier (Simon: "le cabinet contacte le fournisseur").
+// The client's JWT proves membership (RLS on dossiers); saisies are read with the service role.
+export const emailsFournisseur = createServerFn({ method: "POST" })
+  .middleware([requireSupabaseAuth])
+  .inputValidator((d) => z.object({ dossierId: z.string().uuid(), supplier: z.string().trim().min(1).max(200) }).parse(d))
+  .handler(async ({ data, context }) => {
+    const { data: own } = await (context.supabase as any).from("dossiers").select("id").eq("id", data.dossierId).maybeSingle();
+    if (!own) throw new Error("Dossier introuvable.");
+    const { supabaseAdmin } = await import("@/integrations/supabase/client.server");
+    const { data: rows } = await (supabaseAdmin as any).from("saisies")
+      .select("email:lecture->>emailFournisseur").eq("dossier_id", data.dossierId).eq("tiers", data.supplier);
+    const emails = [...new Set((rows ?? []).map((r: any) => String(r.email ?? "").trim().toLowerCase()).filter((e: string) => EMAIL.test(e)))];
+    return { emails: emails.slice(0, 5) as string[] };
   });
