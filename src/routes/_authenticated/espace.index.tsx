@@ -11,6 +11,7 @@ import { AppHeader, CabinetContact } from "@/components/AppHeader";
 import { MultiActions } from "@/components/MultiActions";
 import { Nudge } from "@/components/Nudge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useSupplierSites } from "@/lib/use-sites";
 import { SupplierAvatar } from "@/components/brand";
 import { FilterChip } from "@/components/FilterChip";
 import { GroupStatePill } from "@/components/StatusPill";
@@ -87,6 +88,7 @@ function Espace() {
   const [order, setOrder] = useState<"priority" | "name">("priority");
   // Several suppliers answered at once (Simon): their payments still to do.
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const siteOf = useSupplierSites(dossierId);
 
   const all = txs.data ?? [];
   const steps = prioritize(groupBySupplier(all));
@@ -259,7 +261,7 @@ function Espace() {
                   </div>
                   <div className="mt-4 grid gap-4 sm:grid-cols-2">
                     {list.map((g) => (
-                      <SupplierCard key={g.key} g={g} picked={picked.has(g.key)}
+                      <SupplierCard key={g.key} g={g} site={siteOf(g.name)} picked={picked.has(g.key)}
                         onPick={(on) => setPicked((p) => { const n = new Set(p); if (on) n.add(g.key); else n.delete(g.key); return n; })} />
                     ))}
                   </div>
@@ -284,7 +286,7 @@ function Espace() {
   );
 }
 
-function SupplierCard({ g, picked, onPick }: { g: SupplierGroup; picked: boolean; onPick: (on: boolean) => void }) {
+function SupplierCard({ g, site, picked, onPick }: { g: SupplierGroup; site: string | null; picked: boolean; onPick: (on: boolean) => void }) {
   const done = g.txs.length - todoCount(g);
   const noun = g.direction === "in" ? "encaissement" : "paiement";
   // Payment dates (Stéphane): those still to justify, or all of them once the supplier is done.
@@ -308,7 +310,7 @@ function SupplierCard({ g, picked, onPick }: { g: SupplierGroup; picked: boolean
         picked && "border-primary ring-2 ring-primary/30",
       )}
     >
-      <SupplierAvatar name={g.name} />
+      <SupplierAvatar name={g.name} site={site} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-lg font-bold text-primary">{g.name}</div>
         <div className="text-sm text-muted-foreground">

@@ -2,8 +2,9 @@ import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { bilanDepot, type Bilan } from "@/lib/controle-depot";
+import { bilanDepot, resteAFaire, type Bilan } from "@/lib/controle-depot";
 import { controlerDepot, etatDepots, type PieceDeposee } from "@/lib/saisie.functions";
+import { PHOTO_SANS_FACTURE_COMMENT } from "@/lib/no-invoice";
 import { formatDate, formatEUR, type Tx } from "@/lib/session";
 
 export const ACCEPT = "application/pdf,image/jpeg,image/png";
@@ -40,6 +41,11 @@ export function useDepot(dossierId: string | null | undefined) {
         `La facture semble émise par « ${f} » et non par ${t.supplier} : est-ce bien la bonne ?`,
         { duration: 10000 },
       );
+    for (const nv of b.nonValables)
+      toast.warning(
+        `Ce document est ${nv}, pas une facture : ${"il ne justifie ni la dépense ni la TVA (seule une facture permet de déduire la TVA : CGI art. 271, II ; BOI-TVA-DED-40-10-10 § 30)"}. Déposez la facture définitive pour ${when}.`,
+        { duration: 12000 },
+      );
     if (b.etat === "complet") toast.success(`Facture vérifiée : le montant correspond à ${when}.`);
     else if (b.etat === "partiel")
       toast.warning(
@@ -56,7 +62,8 @@ export function useDepot(dossierId: string | null | undefined) {
   }
 
   // Files go to the targets in order (the last target takes the extra files).
-  async function upload(files: File[], targets: Tx[]) {
+  // photoSansFacture: a photo standing in for a missing invoice (no VAT): not read by Claude, noted for the firm.
+  async function upload(files: File[], targets: Tx[], opts: { photoSansFacture?: boolean } = {}) {
     if (files.length === 0 || !dossierId) return;
     if (targets.length === 0) {
       toast.error("Sélectionnez au moins une ligne.");
@@ -92,6 +99,19 @@ export function useDepot(dossierId: string | null | undefined) {
       }
       const touched = targets.slice(0, files.length);
       toast.success(files.length > 1 ? `${files.length} fichiers envoyés` : "Fichier envoyé");
+      if (opts.photoSansFacture) {
+        const upd = await supabase
+          .from("transactions")
+          .update({ status: "depose", comment: PHOTO_SANS_FACTURE_COMMENT })
+          .in(
+            "id",
+            touched.map((t) => t.id),
+          );
+        if (upd.error) throw upd.error;
+        toast.info("C'est noté : photo justificative, sans TVA déductible.");
+        refresh();
+        return;
+      }
 
       // Claude reads each invoice: supplier and amount are checked against the payment (never blocks the deposit).
       setChecking(true);
@@ -102,7 +122,7 @@ export function useDepot(dossierId: string | null | undefined) {
       setChecking(false);
       const bilans = touched.map((t) => ({ t, b: pieces ? bilanOf(t, pieces) : null }));
       // A payment only partly covered stays to do, so the client adds the missing invoice.
-      const complete = bilans.filter(({ b }) => b?.etat !== "partiel").map(({ t }) => t.id);
+      const complete = bilans.filter(({ b }) => !resteAFaire(b)).map(({ t }) => t.id);
       if (complete.length) {
         const upd = await supabase
           .from("transactions")

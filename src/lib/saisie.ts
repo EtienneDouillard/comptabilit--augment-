@@ -4,6 +4,9 @@ import { z } from "zod";
 import { eclater, type Classement, type LignePiece } from "@/lib/eclatement";
 import { COMPTES_ACHAT, compteAchatValide, libellePcg, SOURCE_PCG } from "@/lib/pcg";
 import { round2, type Facture, type Ligne } from "@/lib/ventilation";
+import { typeDocumentOf, type TypeDocument } from "@/lib/type-document";
+
+export { TYPE_NON_VALABLE, typeDocumentOf, type TypeDocument } from "@/lib/type-document";
 
 // Upper bound kept free in the monthly Claude cap before a reading: a long PDF plus a full answer.
 export const RESERVE_LECTURE_USD = 0.25;
@@ -33,7 +36,8 @@ export function typeMedia(fileName: string): Media | null {
 
 export const SYSTEM_LECTURE = `Tu lis une facture d'achat française pour un cabinet comptable. Tu recopies ce qui est imprimé, sans rien inventer.
 
-- lisible : false si le document n'est pas une facture ou s'il est illisible. Dans ce cas, laisse les lignes vides et les montants à 0.
+- lisible : false si le document est illisible ou n'est pas une pièce d'achat (facture, avoir, facture proforma, devis, bon de commande). Dans ce cas, laisse les lignes vides et les montants à 0.
+- type_document : ce que le document dit être, d'après son titre et ses mentions. « facture » pour une facture définitive ; « avoir » ; « proforma » si le document s'intitule facture proforma (ou pro forma) ; « devis » pour un devis, une offre de prix ou une estimation ; « bon_de_commande » pour un bon ou une confirmation de commande ; « autre » sinon. Un proforma, un devis ou un bon de commande reste lisible : recopie-le comme une facture.
 - fournisseur : le nom de l'émetteur de la facture. numero : le numéro de facture. date : la date de facture au format AAAA-MM-JJ (chaîne vide si absente).
 - lignes : chaque ligne de désignation telle qu'imprimée, sur toutes les pages, sans regrouper. Ne recopie pas les lignes de sous-total, de TVA ou de total.
 - montant_ht : le montant HT de la ligne. prix_unitaire_ht et quantite : tels qu'imprimés (quantite 1 et prix = montant si absents).
@@ -54,6 +58,7 @@ export const OUTPUT_SCHEMA_LECTURE = {
   type: "object",
   properties: {
     lisible: { type: "boolean" },
+    type_document: { type: "string", enum: ["facture", "avoir", "proforma", "devis", "bon_de_commande", "autre"] },
     fournisseur: { type: "string" },
     numero: { type: "string" },
     date: { type: "string" },
@@ -82,7 +87,7 @@ export const OUTPUT_SCHEMA_LECTURE = {
       },
     },
   },
-  required: ["lisible", "fournisseur", "numero", "date", "libelle_ecriture", "total_ht", "total_tva", "total_ttc", "lignes"],
+  required: ["lisible", "type_document", "fournisseur", "numero", "date", "libelle_ecriture", "total_ht", "total_tva", "total_ttc", "lignes"],
   additionalProperties: false,
 } as const;
 
@@ -90,6 +95,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const montant = z.number().finite();
 const Reponse = z.object({
   lisible: z.boolean(),
+  type_document: z.string().default("facture"),
   fournisseur: z.string(),
   numero: z.string(),
   date: z.string(),
@@ -115,6 +121,7 @@ const Reponse = z.object({
 export type LigneLue = LignePiece & { compte: string; motif: string };
 
 export type Lecture = {
+  typeDocument: TypeDocument;
   fournisseur: string; numero: string; date: string | null; libelleEcriture: string;
   totalHt: number; totalTva: number; totalTtc: number; lignes: LigneLue[];
 };
@@ -147,6 +154,7 @@ export function parseLecture(raw: string): Lecture | null {
     });
   if (!r.lisible || lignes.length === 0) return null;
   return {
+    typeDocument: typeDocumentOf(r.type_document),
     fournisseur: r.fournisseur.trim().slice(0, 120),
     numero: r.numero.trim().slice(0, 60),
     date: ISO_DATE.test(r.date) ? r.date : null,
