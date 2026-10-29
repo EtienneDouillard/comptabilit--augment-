@@ -27,6 +27,7 @@ import { EMAIL } from "@/lib/email";
 import { emailsFournisseur } from "@/lib/saisie.functions";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { useCabinet } from "@/lib/cabinet";
 import { useClientDossier, useClientTxs } from "./espace.index";
 
 import { NO_INVOICE_NOTE_SALE, NO_INVOICE_WARNING, PHOTO_SANS_FACTURE_NOTE } from "@/lib/no-invoice";
@@ -229,7 +230,7 @@ function SupplierStep({ steps, idx, dossierId, progress }: {
                   title="Je n'ai pas de facture" desc="Un mot d'explication aide votre comptable." />
                 {!isSale && (
                   <ChoiceTile n={5} icon={Handshake} tone="pale" open={mode === "cabinet"} onToggle={() => setMode(mode === "cabinet" ? null : "cabinet")}
-                    title="Mon cabinet contacte le fournisseur" desc="Vous l'autorisez à demander les factures pour vous." />
+                    title="J'autorise mon expert-comptable à contacter ce fournisseur" desc="Il lui demande les factures par e-mail, pour vous." />
                 )}
               </div>
 
@@ -417,6 +418,7 @@ function ContactParCabinet({ dossierId, supplier, client, paiements, adresseDoss
   dossierId: string; supplier: string; client: string; paiements: Tx[]; adresseDossier: string | null | undefined; onDone: () => void;
 }) {
   const qc = useQueryClient();
+  const cabinet = useCabinet();
   const known = useQuery({ queryKey: ["emails-fournisseur", dossierId, supplier], queryFn: () => emailsFournisseur({ data: { dossierId, supplier } }) });
   const emails = known.data?.emails ?? [];
   const [choice, setChoice] = useState<string | null>(null);
@@ -425,13 +427,14 @@ function ContactParCabinet({ dossierId, supplier, client, paiements, adresseDoss
   const [busy, setBusy] = useState(false);
   const to = (choice ?? emails[0] ?? "") === "autre" || !emails.length ? typed.trim() : (choice ?? emails[0]!);
   const ok = EMAIL.test(to) && paiements.length > 0;
+  // The full e-mail the firm will send (Simon): shown to the client before authorising, and handed to the firm as is.
+  const d = demandeFournisseur({ fournisseur: supplier, client, referenceClient: ref, paiements, adresseDossier, cabinet: cabinet.name });
 
   async function authorize() {
     setBusy(true);
     try {
       const me = await qc.fetchQuery(meQuery);
-      const d = demandeFournisseur({ fournisseur: supplier, client, referenceClient: ref, paiements, adresseDossier });
-      const question = `Le client autorise le cabinet à contacter ${supplier} (${to}) pour obtenir les factures manquantes.\n\nObjet : ${d.subject}\n\n${d.body}`;
+      const question = `Le client autorise le cabinet à contacter ${supplier} (${to}) pour obtenir les factures manquantes.\n\nÀ : ${to}\nObjet : ${d.subject}\n\n${d.body}`;
       const ins = await supabase.from("cabinet_questions").insert({
         dossier_id: dossierId, user_email: me?.email ?? null, question, context: `achat:${supplier}`,
       });
@@ -471,10 +474,14 @@ function ContactParCabinet({ dossierId, supplier, client, paiements, adresseDoss
         <Input type="email" value={typed} onChange={(e) => setTyped(e.target.value)} placeholder="ex. factures@fournisseur.fr" className="bg-card" aria-label="E-mail du fournisseur" />
       )}
       <Input value={ref} onChange={(e) => setRef(e.target.value)} placeholder="Votre référence client chez lui (facultatif)" className="bg-card" aria-label="Référence client" />
+      <div>
+        <p className="text-sm font-semibold">L'e-mail que votre expert-comptable enverra{to ? <> à <code className="font-mono">{to}</code></> : null} :</p>
+        <pre className="mt-1 max-h-56 overflow-auto whitespace-pre-wrap rounded-xl border bg-pale-2 p-3 font-sans text-sm text-muted-foreground">{`Objet : ${d.subject}\n\n${d.body}`}</pre>
+      </div>
       <Button size="xl" disabled={busy || !ok} onClick={authorize}>
-        <Handshake /> J'autorise mon cabinet à contacter {supplier}
+        <Handshake /> J'autorise mon expert-comptable à contacter {supplier}
       </Button>
-      <p className="text-sm text-muted-foreground">Votre cabinet reçoit la demande avec le détail des paiements ; il écrit au fournisseur à votre place.</p>
+      <p className="text-sm text-muted-foreground">Votre cabinet reçoit cette demande prête à envoyer ; il écrit au fournisseur à votre place.</p>
     </div>
   );
 }

@@ -34,4 +34,17 @@ describe("e-mail au fournisseur", () => {
       /^mailto:factures%40edf\.fr\?subject=Demande%20de%20facture&body=/,
     );
   });
+  it("rédigé par le cabinet pour le compte du client, avec les libellés bancaires", () => {
+    const d = demandeFournisseur({
+      fournisseur: "ORANGE",
+      client: "SARL Démo",
+      referenceClient: "C-9",
+      paiements: [tx("2026-09-05", -45.5)],
+      cabinet: "Cabinet Exemple",
+    });
+    expect(d.body).toContain("cabinet comptable de SARL Démo");
+    expect(d.body).toContain("libellé bancaire : PRLV ORANGE");
+    expect(d.body).toContain("Sa référence client : C-9");
+    expect(d.body).toContain("Cabinet Exemple, pour le compte de SARL Démo");
+  });
 });

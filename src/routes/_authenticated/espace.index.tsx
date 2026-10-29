@@ -9,6 +9,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { AppHeader, CabinetContact } from "@/components/AppHeader";
 import { MultiActions } from "@/components/MultiActions";
+import { MonthlyChart } from "@/components/MonthlyChart";
 import { Nudge } from "@/components/Nudge";
 import { SourcesSummary } from "@/components/SourcesSummary";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -141,13 +142,16 @@ function Espace() {
   return (
     <div className="min-h-screen bg-background pb-28 sm:text-[17px]">
       <AppHeader space="client" /><HelpChat raised={picked.size > 0} />
-      <main className="mx-auto max-w-4xl px-4 py-8 sm:py-10">
+      <main className="mx-auto max-w-6xl px-4 py-6 sm:py-8">
         {me.data && !me.data.dossierId ? (
           <p className="text-muted-foreground">Votre compte n'est rattaché à aucun dossier. Contactez votre cabinet.</p>
         ) : txs.isLoading ? (
           <p className="text-muted-foreground">Chargement…</p>
         ) : (
           <>
+            {/* Simon: the whole width is used and the client scrolls less: greeting and summary side by side. */}
+            <div className="grid items-start gap-6 lg:grid-cols-2">
+            <div>
             <h1 className="text-2xl sm:text-3xl">Bonjour,</h1>
             {dossier.data?.name && (
               // The dossier name stands out (retour de Julien): the client sees at once which company is concerned.
@@ -178,11 +182,11 @@ function Espace() {
                 </>
               )}
             </p>
-            <div className="max-w-2xl"><Nudge done={all.length - remaining} total={all.length} /></div>
-            {dossierId && <div className="max-w-2xl"><SourcesSummary dossierId={dossierId} suppliers={[...new Set(all.filter((t) => t.direction === "out").map((t) => t.supplier))]} /></div>}
+            <Nudge done={all.length - remaining} total={all.length} />
+            </div>
 
             {remaining === 0 ? (
-              <section className="mt-6 rounded-3xl bg-primary px-6 py-10 text-center text-primary-foreground sm:px-12">
+              <section className="rounded-3xl bg-primary px-6 py-10 text-center text-primary-foreground sm:px-12">
                 <span className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-mint text-primary">
                   <CheckCircle2 className="h-9 w-9" />
                 </span>
@@ -190,7 +194,7 @@ function Espace() {
                 <p className="mt-2 text-primary-foreground/80">Nous n'attendons aucune facture de votre part pour le moment.</p>
               </section>
             ) : (
-              <section className="relative mt-6 overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-xl shadow-primary/20 sm:p-10">
+              <section className="relative overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-xl shadow-primary/20 sm:p-8">
                 <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 h-80 w-80 rounded-full border-[56px] border-teal-2/60" />
                 <div className="relative">
                   {years.length > 0 && (
@@ -198,13 +202,13 @@ function Espace() {
                       <CalendarCheck className="h-4 w-4" /> Opérations {years.length > 1 ? `${years[0]} – ${years.at(-1)}` : years[0]}
                     </p>
                   )}
-                  <h2 className="mt-3 max-w-2xl text-2xl leading-tight text-primary-foreground sm:text-4xl">
+                  <h2 className="mt-3 max-w-2xl text-2xl leading-tight text-primary-foreground sm:text-3xl">
                     Il nous manque {remaining} facture{remaining > 1 ? "s" : ""}
                     {remaining > 1 && pendingGroups.length > 1 ? ", réparties chez " : ", chez "}
                     {counterparts(pendingGroups)}
                   </h2>
                   {next && (
-                    <div className="mt-8 flex flex-wrap items-center gap-x-5 gap-y-3">
+                    <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-3">
                       <Link
                         to="/espace/$supplier"
                         params={{ supplier: next.key }}
@@ -220,6 +224,14 @@ function Espace() {
                   )}
                 </div>
               </section>
+            )}
+            </div>
+
+            {(dossierId || all.length > 0) && (
+              <div className="mt-6 grid items-start gap-4 lg:grid-cols-2">
+                {dossierId && <SourcesSummary dossierId={dossierId} suppliers={[...new Set(all.filter((t) => t.direction === "out").map((t) => t.supplier))]} />}
+                <MonthlyChart txs={all} />
+              </div>
             )}
 
             {steps.length > 0 && (
@@ -302,7 +314,7 @@ function Espace() {
               const todo = list.reduce((n, g) => n + todoCount(g), 0);
               const Icon = d === "out" ? ShoppingBag : ReceiptText;
               return (
-                <section key={d} className="mt-10">
+                <section key={d} className="mt-8">
                   <div className="flex flex-wrap items-end justify-between gap-2">
                     <h2 className="flex items-center gap-3 text-xl sm:text-2xl">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-pale text-primary">
@@ -315,7 +327,7 @@ function Espace() {
                     </span>
                   </div>
                   {view === "cards" ? (
-                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                    <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
                       {list.map((g) => (
                         <SupplierCard key={g.key} g={g} site={siteOf(g.name)} picked={picked.has(g.key)} onPick={(on) => pick(g.key, on)} />
                       ))}
@@ -362,14 +374,15 @@ function SupplierCard({ g, site, picked, onPick }: { g: SupplierGroup; site: str
       to="/espace/$supplier"
       params={{ supplier: g.key }}
       className={cn(
-        "group flex items-center gap-4 rounded-2xl border p-5 pl-10 transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
+        "group flex items-center gap-3 rounded-2xl border p-4 pl-10 transition-shadow hover:shadow-md focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary",
         g.state === "done" ? "bg-card/60" : "bg-card shadow-sm",
         picked && "border-primary ring-2 ring-primary/30",
       )}
     >
       <SupplierAvatar name={g.name} site={site} />
       <div className="min-w-0 flex-1">
-        <div className="truncate text-lg font-bold text-primary">{g.name}</div>
+        {/* Simon: the full name, wrapped if needed, never cut. */}
+        <div className="break-words text-lg font-bold leading-snug text-primary">{g.name}</div>
         <div className="text-sm text-muted-foreground">
           {g.txs.length} {noun}{g.txs.length > 1 ? "s" : ""} · <span className="font-semibold text-foreground">{formatEUR(g.total)}</span>
         </div>
@@ -382,9 +395,8 @@ function SupplierCard({ g, site, picked, onPick }: { g: SupplierGroup; site: str
             {done} sur {g.txs.length} traité{done > 1 ? "s" : ""}
           </div>
         )}
-        <GroupStatePill state={g.state} className="mt-2 sm:hidden" />
+        <GroupStatePill state={g.state} className="mt-2" />
       </div>
-      <GroupStatePill state={g.state} className="hidden sm:inline-flex" />
       <ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-0.5" />
     </Link>
     </div>
@@ -404,7 +416,7 @@ function SupplierRow({ g, site, picked, onPick }: { g: SupplierGroup; site: stri
       <Link to="/espace/$supplier" params={{ supplier: g.key }} className="group flex min-w-0 flex-1 items-center gap-3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary">
         <SupplierAvatar name={g.name} site={site} className="h-9 w-9 text-sm" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate font-bold text-primary">{g.name}</span>
+          <span className="block break-words font-bold text-primary">{g.name}</span>
           <span className="block truncate text-sm text-muted-foreground">{paymentDates(g)}</span>
         </span>
         <span className="text-right text-sm">
